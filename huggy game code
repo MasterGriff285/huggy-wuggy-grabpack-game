@@ -1,0 +1,1680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Escape the Factory</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; touch-action: none; user-select: none; -webkit-user-select: none; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: auto; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #crosshair {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            transition: all 0.1s;
+            pointer-events: none;
+        }
+
+        #crosshair.grapple { border-color: #0044ff; box-shadow: 0 0 15px #0044ff; transform: translate(-50%, -50%) scale(1.5); }
+        #crosshair.power { border-color: #00ffaa; box-shadow: 0 0 15px #00ffaa; transform: translate(-50%, -50%) scale(1.5); }
+        #crosshair.lever { border-color: #ffff00; box-shadow: 0 0 15px #ffff00; transform: translate(-50%, -50%) scale(1.5); }
+
+        #interaction-text {
+            position: absolute;
+            top: 55%;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 0 5px black;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        #overlay {
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 10px;
+            text-align: center;
+            color: #fff;
+            border: 2px solid #ff0044;
+            pointer-events: none;
+            cursor: pointer;
+            max-width: 500px;
+            box-shadow: 0 0 50px rgba(255, 0, 68, 0.2);
+            z-index: 50;
+        }
+
+        h1 { margin: 0 0 20px 0; color: #ff0044; text-transform: uppercase; letter-spacing: 5px; text-shadow: 0 0 20px #ff0044; font-size: 32px; }
+        p { font-size: 16px; color: #ccc; line-height: 1.5; text-align: left; }
+        .controls { margin-top: 20px; font-size: 14px; color: #888; border-top: 1px solid #333; padding-top: 10px; text-align: center;}
+        .key { display: inline-block; padding: 5px 10px; border: 1px solid #ff0044; border-radius: 4px; margin: 0 2px; color: #fff; background: #222; box-shadow: 0 0 5px #ff0044; }
+
+        #status-msg {
+            position: absolute;
+            top: 30%;
+            width: 100%;
+            text-align: center;
+            font-size: 64px;
+            font-weight: 900;
+            display: none;
+            text-shadow: 0 0 30px black;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            pointer-events: none;
+            z-index: 40;
+        }
+
+        .vignette {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle, transparent 40%, rgba(0,0,0,0.8) 90%);
+            pointer-events: none;
+            z-index: 4;
+        }
+
+        .scanlines {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15),
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 5;
+        }
+        
+        #flash-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: red;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .danger-mode { animation: pulse-red 0.5s infinite; }
+        @keyframes pulse-red {
+            0% { box-shadow: inset 0 0 0 rgba(255,0,0,0); }
+            50% { box-shadow: inset 0 0 50px rgba(255,0,0,0.3); }
+            100% { box-shadow: inset 0 0 0 rgba(255,0,0,0); }
+        }
+
+        /* --- MOBILE CONTROLS --- */
+        #mobile-controls {
+            display: none; 
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 30;
+        }
+
+        .touch-zone {
+            position: absolute;
+            bottom: 0;
+            width: 50%;
+            height: 50%;
+            pointer-events: auto;
+        }
+        #stick-zone { left: 0; }
+        #look-zone { right: 0; }
+
+        .mob-btn {
+            position: absolute;
+            width: 65px;
+            height: 65px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 20px;
+            backdrop-filter: blur(4px);
+            touch-action: manipulation;
+        }
+        .mob-btn:active { background: rgba(255, 255, 255, 0.5); transform: scale(0.95); }
+
+        /* Updated Button Positions - Cluster on Right */
+        #btn-jump { bottom: 130px; right: 20px; border-color: #fff; }
+        #btn-crouch { bottom: 130px; right: 100px; border-color: #aaa; color: #aaa; }
+        
+        #btn-blue { bottom: 40px; right: 100px; border-color: #0044ff; color: #0044ff; background: rgba(0, 68, 255, 0.1); }
+        #btn-red { bottom: 40px; right: 20px; border-color: #ff0000; color: #ff0000; background: rgba(255, 0, 0, 0.1); }
+
+        @media (hover: none) and (pointer: coarse) {
+            #mobile-controls { display: block; }
+            .controls { display: none; } 
+        }
+    </style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+<div class="vignette"></div>
+<div class="scanlines"></div>
+<div id="flash-layer"></div>
+
+<div id="ui-layer">
+    <div id="crosshair"></div>
+    <div id="interaction-text">INTERACT</div>
+    <div id="status-msg"></div>
+    
+    <div id="overlay">
+        <h1>Toy Factory Escape</h1>
+        <p style="color:#ff4444; font-weight:bold; text-align:center;">UPDATE: THE DARK DEPTHS</p>
+        <p>1. Solve the <b>Cable Puzzle</b> to unlock the door.</p>
+        <p>2. <b>Crouch</b> to crawl through the new Vents.</p>
+        <p>3. Navigate the <b>Dark Storage Maze</b>.</p>
+        <p>4. <b>Wrap</b> the final pole to open the Crusher.</p>
+        
+        <div class="controls">
+            <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> Run &nbsp;|&nbsp; 
+            <span class="key">SPACE</span> Jump &nbsp;|&nbsp; <span class="key">C</span> Crouch <br>
+            <span class="key">L-CLICK</span> Blue Hand &nbsp;|&nbsp; <span class="key">R-CLICK</span> Red Hand
+        </div>
+        <p style="margin-top: 30px; color: #00ffff; font-weight: bold; font-size: 24px; text-align:center;">CLICK TO START</p>
+    </div>
+
+    <!-- Mobile UI -->
+    <div id="mobile-controls">
+        <div id="stick-zone" class="touch-zone"></div>
+        <div id="look-zone" class="touch-zone"></div>
+        
+        <div id="btn-crouch" class="mob-btn">⬇</div>
+        <div id="btn-jump" class="mob-btn">⬆</div>
+        
+        <div id="btn-blue" class="mob-btn">✋</div>
+        <div id="btn-red" class="mob-btn">✋</div>
+    </div>
+</div>
+
+<!-- Import Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- PointerLockControls -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+
+<script>
+/**
+ * TOY FACTORY ESCAPE - FIXED UI
+ */
+
+// --- Global Configuration ---
+const CONFIG = {
+    moveSpeed: 130.0,
+    crouchSpeed: 50.0, 
+    friction: 8.0,
+    huggySpeed: 14.8, 
+    huggyFlankSpeed: 25.0, 
+    jumpForce: 12.0,
+    gravity: 30.0,
+    conveyorSpeed: 30.0, 
+    worldColor: 0x010103,
+    fogDensity: 0.02,
+    baseFov: 75,
+    sprintFov: 85
+};
+
+// --- Game State ---
+const state = {
+    isPlaying: false,
+    isGameOver: false,
+    doorClosed: false, 
+    securityDoorOpen: false, 
+    leverPulled: false,
+    isGrappling: false,
+    isCrouching: false, 
+    grappleTarget: null,
+    grappleStart: null,
+    grappleProgress: 0,
+    canJump: false,
+    lastTime: performance.now(),
+    runTime: 0,
+    puzzleWrapped: false,
+    puzzleSolved: false,
+    introTriggered: false
+};
+
+// --- Input State ---
+const input = {
+    forward: 0, 
+    right: 0,   
+};
+
+// --- Core Variables ---
+let camera, scene, renderer, controls;
+let raycaster;
+let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false, jump = false, crouchInput = false;
+let velocity = new THREE.Vector3();
+let direction = new THREE.Vector3();
+let particles;
+
+// --- Game Objects ---
+let huggyWuggy;
+let grabPack;
+let levelObjects = {};
+
+// --- Classes ---
+
+class GrabPack {
+    constructor(camera) {
+        this.camera = camera;
+        this.isShooting = false;
+        this.handState = 'idle'; 
+        this.activeHand = null; 
+        this.latched = false;
+        this.latchedPos = new THREE.Vector3();
+        
+        this.container = new THREE.Group();
+        camera.add(this.container);
+
+        const handGeo = new THREE.BoxGeometry(0.25, 0.35, 0.1);
+        const blueMat = new THREE.MeshStandardMaterial({ color: 0x0066ff, roughness: 0.1, metalness: 0.8, emissive: 0x001133 });
+        const redMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.1, metalness: 0.8, emissive: 0x330000 });
+
+        this.blueHand = new THREE.Group();
+        this.blueHand.add(new THREE.Mesh(handGeo, blueMat));
+        this.blueHand.position.set(-0.5, -0.4, -0.8);
+        this.container.add(this.blueHand);
+        this.blueOrigin = this.blueHand.position.clone();
+
+        this.redHand = new THREE.Group();
+        this.redHand.add(new THREE.Mesh(handGeo, redMat));
+        this.redHand.position.set(0.5, -0.4, -0.8);
+        this.container.add(this.redHand);
+        this.redOrigin = this.redHand.position.clone();
+
+        this.cable = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 8), new THREE.MeshPhongMaterial({ color: 0x222222 }));
+        this.cable.visible = false;
+        scene.add(this.cable);
+
+        this.wrapCable = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 8), new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x004444 }));
+        this.wrapCable.visible = false;
+        scene.add(this.wrapCable);
+
+        raycaster = new THREE.Raycaster();
+    }
+
+    shoot(handType) {
+        if (this.isShooting || state.leverPulled || state.isGameOver) return;
+        
+        if (handType === 'red' && this.latched && state.puzzleWrapped && !state.puzzleSolved) {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            for(let hit of intersects) {
+                if(hit.object.name === "PUZZLE_RECEIVER") { solvePuzzle(); return; }
+            }
+        }
+
+        this.isShooting = true;
+        this.handState = 'extending';
+        this.activeHand = handType;
+        
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+
+        let targetPoint = null;
+        let landingZone = null;
+        this.targetType = 'air';
+
+        for (let hit of intersects) {
+            if (hit.object.name === "LEVER_HITBOX") { targetPoint = hit.point; this.targetType = 'lever'; break; }
+            if (hit.object.name === "GRAPPLE_POINT") { targetPoint = hit.point; this.targetType = 'grapple'; landingZone = hit.object.userData.landing; break; }
+            if (hit.object.name === "POWER_NODE") { targetPoint = hit.point; this.targetType = 'power'; break; }
+            if (hit.object.name === "PUZZLE_SOURCE" && handType === 'blue') { targetPoint = hit.point; this.targetType = 'latch_source'; break; }
+            if (hit.object.userData.isEnvironment) { targetPoint = hit.point; break; }
+        }
+
+        if (!targetPoint) {
+            const dir = new THREE.Vector3();
+            this.camera.getWorldDirection(dir);
+            targetPoint = this.camera.position.clone().add(dir.multiplyScalar(30));
+        }
+
+        this.animateShot(targetPoint, landingZone);
+    }
+
+    animateShot(targetWorldPos, landingZone) {
+        let progress = 0;
+        const speed = 0.15; 
+        const handObj = this.activeHand === 'blue' ? this.blueHand : this.redHand;
+        const origin = this.activeHand === 'blue' ? this.blueOrigin : this.redOrigin;
+        const shoulderOffset = this.activeHand === 'blue' ? new THREE.Vector3(-0.5, -0.4, -0.5) : new THREE.Vector3(0.5, -0.4, -0.5);
+
+        const update = () => {
+            if (!this.isShooting && !this.latched) {
+                handObj.position.copy(origin);
+                handObj.rotation.set(0,0,0);
+                this.cable.visible = false;
+                return;
+            }
+
+            const shoulderPos = shoulderOffset.clone(); 
+            shoulderPos.applyMatrix4(this.camera.matrixWorld);
+
+            if (this.handState === 'extending') {
+                progress += speed;
+                if (progress >= 1) {
+                    progress = 1;
+                    if (this.targetType === 'latch_source') {
+                        this.latched = true;
+                        this.latchedPos.copy(targetWorldPos);
+                        this.isShooting = false; 
+                        return; 
+                    } else {
+                        this.handState = 'retracting';
+                        if (this.targetType === 'lever') pullLever();
+                        if (this.targetType === 'grapple') startGrapple(landingZone);
+                        if (this.targetType === 'power') activatePower();
+                    }
+                }
+            } else {
+                progress -= speed;
+                if (progress <= 0) {
+                    this.isShooting = false;
+                    this.handState = 'idle';
+                    this.cable.visible = false;
+                    handObj.position.copy(origin);
+                    return;
+                }
+            }
+
+            const currentHandPos = new THREE.Vector3().lerpVectors(shoulderPos, targetWorldPos, progress);
+            this.updateCable(this.cable, shoulderPos, currentHandPos);
+            const localPos = currentHandPos.clone();
+            this.camera.worldToLocal(localPos);
+            handObj.position.copy(localPos);
+            requestAnimationFrame(update);
+        };
+        update();
+    }
+
+    updateLoop() {
+        if (this.latched && this.activeHand === 'blue') {
+            const shoulderPos = new THREE.Vector3(-0.5, -0.4, -0.5); 
+            shoulderPos.applyMatrix4(this.camera.matrixWorld);
+            const gunTip = new THREE.Vector3(-0.2, -0.3, 0.5).applyMatrix4(this.camera.matrixWorld);
+            const sourcePos = this.latchedPos; 
+            const polePos = levelObjects.puzzlePole.position.clone();
+            const poleRadius = 0.5;
+
+            const isIntersecting = this.checkCablePoleCollision(sourcePos, gunTip, polePos, poleRadius);
+            
+            if (isIntersecting) {
+                state.puzzleWrapped = true;
+                levelObjects.puzzlePole.material.color.setHex(0x00ffff);
+                levelObjects.puzzlePole.material.emissive.setHex(0x00aaaa);
+                this.wrapCable.visible = true;
+                this.updateCable(this.wrapCable, sourcePos, polePos);
+                this.cable.visible = true;
+                this.updateCable(this.cable, polePos, gunTip);
+            } else {
+                state.puzzleWrapped = false;
+                levelObjects.puzzlePole.material.color.setHex(0x555555);
+                levelObjects.puzzlePole.material.emissive.setHex(0x000000);
+                this.wrapCable.visible = false;
+                this.cable.visible = true;
+                this.updateCable(this.cable, sourcePos, gunTip);
+            }
+            
+            const handLocal = sourcePos.clone();
+            this.camera.worldToLocal(handLocal);
+            this.blueHand.position.copy(handLocal);
+            this.blueHand.lookAt(this.camera.position); 
+        }
+    }
+
+    checkCablePoleCollision(p1, p2, circleCenter, radius) {
+        const ab = new THREE.Vector2(p2.x - p1.x, p2.z - p1.z);
+        const ac = new THREE.Vector2(circleCenter.x - p1.x, circleCenter.z - p1.z);
+        const t = Math.min(1, Math.max(0, ac.dot(ab) / ab.dot(ab)));
+        const closestX = p1.x + t * (p2.x - p1.x);
+        const closestZ = p1.z + t * (p2.z - p1.z);
+        const distSq = (closestX - circleCenter.x)**2 + (closestZ - circleCenter.z)**2;
+        return distSq < radius * radius;
+    }
+
+    updateCable(mesh, start, end) {
+        mesh.visible = true;
+        const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+        mesh.position.copy(mid);
+        mesh.lookAt(end);
+        mesh.scale.set(1, 1, start.distanceTo(end));
+        mesh.rotation.x += Math.PI / 2;
+    }
+}
+
+class HuggyWuggy {
+    constructor(scene) {
+        this.mesh = new THREE.Group();
+        this.forceSpeed = null; 
+        this.squashed = false;
+        
+        const furMaterial = new THREE.MeshStandardMaterial({ color: 0x0000cc, roughness: 0.9, metalness: 0.1 });
+        const bodyGeo = new THREE.BoxGeometry(1.2, 2.5, 0.8);
+        this.body = new THREE.Mesh(bodyGeo, furMaterial);
+        this.body.position.y = 3.5;
+        this.mesh.add(this.body);
+
+        this.headGroup = new THREE.Group();
+        this.headGroup.position.set(0, 5.5, 0);
+        this.mesh.add(this.headGroup);
+
+        const headGeo = new THREE.CylinderGeometry(1.4, 1.4, 0.8, 4);
+        this.upperHead = new THREE.Mesh(headGeo, furMaterial);
+        this.upperHead.rotation.y = Math.PI / 4;
+        this.upperHead.position.y = 0.4;
+        this.upperHead.scale.z = 0.6;
+        this.headGroup.add(this.upperHead);
+
+        this.jaw = new THREE.Group();
+        this.jaw.position.y = 0.0; 
+        this.headGroup.add(this.jaw);
+
+        const jawGeo = new THREE.CylinderGeometry(1.2, 0.8, 0.6, 4);
+        const jawMesh = new THREE.Mesh(jawGeo, furMaterial);
+        jawMesh.rotation.y = Math.PI / 4;
+        jawMesh.position.y = -0.3; 
+        jawMesh.scale.z = 0.6;
+        this.jaw.add(jawMesh);
+
+        const lipsMat = new THREE.MeshStandardMaterial({ color: 0xaa0000, roughness: 0.4 });
+        const lipsGeo = new THREE.TorusGeometry(0.8, 0.08, 8, 4); 
+        const lips = new THREE.Mesh(lipsGeo, lipsMat);
+        lips.rotation.z = Math.PI / 4; 
+        lips.rotation.x = Math.PI / 2;
+        lips.position.y = 0.0;
+        lips.scale.x = 1.3;
+        this.headGroup.add(lips);
+
+        const eyeGeo = new THREE.SphereGeometry(0.4, 16, 16);
+        const eyeL = new THREE.Mesh(eyeGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        eyeL.position.set(-0.45, 0.4, 0.65);
+        this.upperHead.add(eyeL);
+        const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+        pupilL.position.set(0, 0, 0.35);
+        eyeL.add(pupilL);
+        const eyeR = eyeL.clone();
+        eyeR.position.set(0.45, 0.4, 0.65);
+        this.upperHead.add(eyeR);
+
+        const teethGeo = new THREE.ConeGeometry(0.08, 0.3, 4);
+        const teethMat = new THREE.MeshBasicMaterial({ color: 0xffffdd });
+        for(let i=0; i<8; i++) {
+            const t = new THREE.Mesh(teethGeo, teethMat);
+            t.position.set((i-3.5)*0.15, 0.0, 0.7); 
+            t.rotation.x = Math.PI; 
+            this.upperHead.add(t);
+        }
+        for(let i=0; i<8; i++) {
+            const t = new THREE.Mesh(teethGeo, teethMat);
+            t.position.set((i-3.5)*0.15, 0.1, 0.6); 
+            this.jaw.add(t);
+        }
+
+        this.scareLight = new THREE.PointLight(0xff0000, 0, 5);
+        this.scareLight.position.set(0, 0, 2);
+        this.headGroup.add(this.scareLight);
+
+        const limbGeo = new THREE.CylinderGeometry(0.15, 0.15, 5);
+        this.armL = new THREE.Mesh(limbGeo, furMaterial);
+        this.armL.position.set(-1.2, 4, 0);
+        this.mesh.add(this.armL);
+        this.armR = this.armL.clone();
+        this.armR.position.set(1.2, 4, 0);
+        this.mesh.add(this.armR);
+        this.legL = new THREE.Mesh(limbGeo, furMaterial);
+        this.legL.position.set(-0.5, 1, 0);
+        this.mesh.add(this.legL);
+        this.legR = this.legL.clone();
+        this.legR.position.set(0.5, 1, 0);
+        this.mesh.add(this.legR);
+
+        this.mesh.traverse(obj => { if(obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; } });
+        scene.add(this.mesh);
+        
+        this.time = 0;
+        this.state = 'waiting'; 
+        this.jumpscareTime = 0;
+    }
+
+    update(dt, playerPos) {
+        if (this.state === 'waiting') return; 
+        if (this.state === 'intro') { this.animateIntro(dt); return; }
+        if (this.state === 'trapped') return;
+        if (this.state === 'jumpscare') { this.animateJumpscare(dt); return; }
+
+        let target = playerPos.clone();
+        const corner1 = new THREE.Vector3(0, 0, -5);   
+        const corner2 = new THREE.Vector3(40, 0, -5);  
+        const corner3 = new THREE.Vector3(40, 0, -90); 
+        const corner4 = new THREE.Vector3(80, 0, -90); // Acid Pit -> Vent Room
+        const ventEntrance = new THREE.Vector3(75, 0, -100);
+        const ventExit = new THREE.Vector3(75, 0, -135);
+        
+        const myZ = this.mesh.position.z;
+        const myX = this.mesh.position.x;
+
+        // Pathfinding
+        if (myZ > 60) {
+            target = new THREE.Vector3(0, 0, 50);
+        } else if (myZ > -2) {
+            if (playerPos.x > 5) target = corner1;
+        } else if (myX < 38 && myZ > -20) {
+            if (playerPos.z < -10) target = corner2;
+        } else if (myZ > -88 && myX < 45) {
+            if (playerPos.x > 45) target = corner3;
+        } else if (myX < 78 && myZ < -80) {
+            // Acid Pit Area
+            if (playerPos.z < -95) target = corner4;
+        } else if (myX > 60 && myZ < -95 && myZ > -130) {
+            // NEW: Player is in Vents/Storage?
+            // If Player is crouching in vent (Y < 2.5), Huggy can't follow.
+            // He must Flank to the exit.
+            if (playerPos.y < 2.5 && playerPos.z > -135) {
+                target = ventExit; // Run to the other side
+                this.forceSpeed = CONFIG.huggyFlankSpeed; // Run fast!
+            } else {
+                this.forceSpeed = null; // Resume normal chase
+            }
+        }
+        
+        if (myZ > -26 && myZ < -24 && myX > 35 && myX < 45 && !state.securityDoorOpen && playerPos.z < -25) {
+            this.animateLimbs(dt * 5); return; 
+        }
+
+        if (state.leverPulled && !state.doorClosed) {
+            target = new THREE.Vector3(80, this.mesh.position.y, -182); // Final Gate
+        }
+
+        target.y = this.mesh.position.y; 
+
+        const direction = new THREE.Vector3().subVectors(target, this.mesh.position);
+        const dist = direction.length();
+        direction.normalize();
+
+        let currentSpeed = CONFIG.huggySpeed;
+        if (this.forceSpeed !== null) currentSpeed = this.forceSpeed;
+
+        if (myX > 30 && myX < 50 && myZ < -30 && myZ > -80) { currentSpeed -= 7.0; }
+
+        if (dist > 0.5) {
+            this.mesh.position.add(direction.multiplyScalar(currentSpeed * dt));
+            this.mesh.lookAt(target.x, this.mesh.position.y, target.z);
+            const animSpeed = currentSpeed > 10 ? 25 : 15;
+            this.animateLimbs(dt * animSpeed);
+        } else {
+            if (!state.leverPulled && this.mesh.position.distanceTo(playerPos) < 2.5) {
+                this.triggerJumpscare(camera);
+            }
+        }
+        
+        if (this.state !== 'trapped' && this.mesh.position.distanceTo(playerPos) < 2.5) {
+             this.triggerJumpscare(camera);
+        }
+    }
+
+    animateLimbs(speed) {
+        if (this.squashed) return; 
+        this.time += speed;
+        this.armL.rotation.x = Math.sin(this.time) * 1.2;
+        this.armR.rotation.x = -Math.sin(this.time) * 1.2;
+        this.legL.rotation.x = -Math.sin(this.time) * 1.5;
+        this.legR.rotation.x = Math.sin(this.time) * 1.5;
+        this.mesh.position.y = 0 + Math.abs(Math.sin(this.time * 2)) * 0.3;
+        this.jaw.rotation.x = 0; 
+    }
+
+    animateIntro(dt) {
+        const target = new THREE.Vector3(0, 0, 75);
+        const dir = new THREE.Vector3().subVectors(target, this.mesh.position);
+        if (dir.length() > 0.5) {
+            dir.normalize();
+            this.mesh.position.add(dir.multiplyScalar(5 * dt)); 
+            this.mesh.lookAt(target.x, this.mesh.position.y, target.z);
+            this.animateLimbs(dt * 10);
+        } else {
+            this.state = 'chasing';
+            state.introTriggered = true;
+            levelObjects.escapeDoor.position.y = 12; 
+            shakeCamera(10);
+        }
+    }
+
+    triggerJumpscare(camera) {
+        if(this.state === 'jumpscare') return;
+        this.state = 'jumpscare';
+        state.isGameOver = true;
+        controls.unlock(); 
+        
+        const forward = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        forward.y = 0; 
+        forward.normalize();
+
+        this.mesh.position.copy(camera.position).add(forward.multiplyScalar(3.0));
+        this.mesh.position.y = camera.position.y - 5.5; 
+
+        this.mesh.lookAt(camera.position.x, this.mesh.position.y, camera.position.z);
+        this.scareLight.intensity = 2;
+        
+        const flash = document.getElementById('flash-layer');
+        flash.style.opacity = 0.8;
+        setTimeout(() => flash.style.opacity = 0, 100);
+    }
+
+    animateJumpscare(dt) {
+        this.jumpscareTime += dt;
+        const shake = 0.05;
+        this.mesh.position.x += (Math.random()-0.5) * shake;
+        this.mesh.position.y += (Math.random()-0.5) * shake;
+        if (this.jaw.rotation.x < 1.0) this.jaw.rotation.x += dt * 8; 
+        const lunge = Math.min(1.0, this.jumpscareTime * 2.0); 
+        camera.fov = 75 - (lunge * 45); 
+        camera.rotation.z = (Math.random()-0.5) * 0.1;
+        camera.updateProjectionMatrix();
+
+        if (this.jumpscareTime > 1.2) {
+            document.getElementById('flash-layer').style.background = 'black';
+            document.getElementById('flash-layer').style.opacity = 1;
+        }
+        if (this.jumpscareTime > 2.0) endGame(false);
+    }
+}
+
+// --- Puzzle Logic ---
+function solvePuzzle() {
+    if (state.puzzleWrapped && !state.puzzleSolved) {
+        state.puzzleSolved = true;
+        
+        levelObjects.puzzleReceiver.material.color.setHex(0x00ff00); 
+        levelObjects.puzzleReceiver.material.emissive.setHex(0x00aa00);
+        
+        grabPack.latched = false;
+        grabPack.cable.visible = false;
+        grabPack.wrapCable.visible = false;
+        grabPack.blueHand.position.copy(grabPack.blueOrigin);
+
+        triggerIntro();
+    }
+}
+
+function triggerIntro() {
+    const d = levelObjects.huggyDoor;
+    let y = 6;
+    const i = setInterval(()=>{
+        y += 0.5;
+        d.position.y = y;
+        if(y>16) clearInterval(i);
+    }, 20);
+    huggyWuggy.state = 'intro';
+    shakeCamera(5);
+}
+
+function createParticles() {
+    const particleCount = 200;
+    const geo = new THREE.BufferGeometry();
+    const pos = [];
+    for(let i=0; i<particleCount; i++) {
+        pos.push(60 + (Math.random()-0.5)*20); 
+        pos.push(0.5); 
+        pos.push(-90 + (Math.random()-0.5)*10); 
+    }
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+        color: 0x00ff00,
+        size: 0.2,
+        transparent: true,
+        opacity: 0.6
+    });
+    particles = new THREE.Points(geo, mat);
+    scene.add(particles);
+}
+
+// --- Init ---
+
+function init() {
+    const container = document.getElementById('canvas-container');
+    const uiLayer = document.getElementById('ui-layer'); 
+    const overlay = document.getElementById('overlay');
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(CONFIG.worldColor);
+    scene.fog = new THREE.FogExp2(CONFIG.worldColor, CONFIG.fogDensity);
+
+    camera = new THREE.PerspectiveCamera(CONFIG.baseFov, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.7, 90); 
+    camera.rotation.y = Math.PI; 
+    camera.rotation.order = 'YXZ'; // Fixed rotation order
+
+    const ambLight = new THREE.AmbientLight(0x111111);
+    scene.add(ambLight);
+
+    const flashlight = new THREE.SpotLight(0xffeebb, 2.5, 80, Math.PI/5, 0.5);
+    flashlight.position.set(0,0,0);
+    flashlight.target.position.set(0,0,-1);
+    flashlight.castShadow = true;
+    flashlight.shadow.mapSize.width = 1024;
+    flashlight.shadow.mapSize.height = 1024;
+    flashlight.shadow.bias = -0.0001; 
+    camera.add(flashlight);
+    camera.add(flashlight.target);
+    scene.add(camera);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true; 
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+    container.appendChild(renderer.domElement);
+
+    controls = new THREE.PointerLockControls(camera, document.body);
+    
+    // --- Start Handler ---
+    const startGame = () => {
+        if (state.isPlaying) return;
+        state.isPlaying = true;
+        
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth < 1000 && 'ontouchstart' in window);
+        
+        overlay.style.display = 'none';
+        uiLayer.classList.add('danger-mode');
+        
+        if (isMobile) {
+            document.getElementById('mobile-controls').style.display = 'block';
+            uiLayer.style.pointerEvents = 'none'; 
+            document.getElementById('mobile-controls').style.pointerEvents = 'none'; 
+        } else {
+            controls.lock();
+        }
+    };
+
+    if (uiLayer) {
+        uiLayer.addEventListener('click', (e) => {
+            if (!state.isPlaying && !e.target.closest('.mob-btn')) startGame();
+        });
+        uiLayer.addEventListener('touchstart', (e) => {
+            if (!state.isPlaying && !e.target.closest('.touch-zone') && !e.target.closest('.mob-btn')) {
+                e.preventDefault();
+                startGame();
+            }
+        }, { passive: false });
+    }
+
+    controls.addEventListener('lock', () => { 
+        state.isPlaying = true; 
+        overlay.style.display = 'none'; 
+        uiLayer.classList.add('danger-mode');
+    });
+    controls.addEventListener('unlock', () => { 
+        state.isPlaying = false; 
+        if (!state.isGameOver) overlay.style.display = 'block'; 
+        uiLayer.classList.remove('danger-mode');
+    });
+
+    setupMobileControls();
+
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('contextmenu', event => event.preventDefault());
+    window.addEventListener('resize', onWindowResize);
+
+    buildLevel();
+    
+    scene.traverse(obj => {
+        if(obj.isMesh && (obj.userData.isEnvironment || obj.name.includes("PUZZLE") || obj.name.includes("DOOR") || obj.name.includes("GATE"))) {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+        }
+    });
+
+    createParticles();
+    grabPack = new GrabPack(camera);
+    huggyWuggy = new HuggyWuggy(scene);
+    huggyWuggy.mesh.position.set(25, 0, 80); 
+    huggyWuggy.mesh.rotation.y = Math.PI / 2; 
+}
+
+function setupMobileControls() {
+    const stickZone = document.getElementById('stick-zone');
+    const lookZone = document.getElementById('look-zone');
+    const btnJump = document.getElementById('btn-jump');
+    const btnCrouch = document.getElementById('btn-crouch');
+    const btnBlue = document.getElementById('btn-blue');
+    const btnRed = document.getElementById('btn-red');
+
+    let touchOrigin = { x: 0, y: 0 };
+
+    stickZone.addEventListener('touchstart', (e) => {
+        const touch = e.changedTouches[0];
+        touchOrigin.x = touch.clientX;
+        touchOrigin.y = touch.clientY;
+    });
+    stickZone.addEventListener('touchmove', (e) => {
+        const touch = e.changedTouches[0];
+        const deltaX = touch.clientX - touchOrigin.x;
+        const deltaY = touch.clientY - touchOrigin.y;
+        input.right = Math.max(-1, Math.min(1, deltaX / 40));
+        input.forward = -Math.max(-1, Math.min(1, deltaY / 40)); 
+    });
+    stickZone.addEventListener('touchend', () => {
+        input.forward = 0;
+        input.right = 0;
+    });
+
+    let lastLook = { x: 0, y: 0 };
+    lookZone.addEventListener('touchstart', (e) => {
+        const touch = e.changedTouches[0];
+        lastLook.x = touch.clientX;
+        lastLook.y = touch.clientY;
+    });
+    lookZone.addEventListener('touchmove', (e) => {
+        const touch = e.changedTouches[0];
+        const dx = touch.clientX - lastLook.x;
+        const dy = touch.clientY - lastLook.y;
+        lastLook.x = touch.clientX;
+        lastLook.y = touch.clientY;
+
+        if (state.isPlaying) {
+            camera.rotation.y -= dx * 0.005;
+            const newPitch = camera.rotation.x - dy * 0.005;
+            camera.rotation.x = Math.max(-1.5, Math.min(1.5, newPitch));
+        }
+    });
+
+    const handleBtn = (btn, action) => {
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            e.stopPropagation(); 
+            action();
+        });
+    };
+
+    handleBtn(btnJump, () => {
+        if(state.canJump) { velocity.y = CONFIG.jumpForce; state.canJump = false; }
+    });
+    handleBtn(btnCrouch, () => {
+        crouchInput = !crouchInput; 
+    });
+    handleBtn(btnBlue, () => grabPack.shoot('blue'));
+    handleBtn(btnRed, () => grabPack.shoot('red'));
+}
+
+function buildLevel() {
+    const textureLoader = new THREE.TextureLoader();
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 });
+
+    const floor0 = new THREE.Mesh(new THREE.PlaneGeometry(30, 40), floorMat);
+    floor0.rotation.x = -Math.PI/2;
+    floor0.position.set(0, 0, 80);
+    floor0.userData.isEnvironment = true;
+    scene.add(floor0);
+
+    const ceil0 = new THREE.Mesh(new THREE.PlaneGeometry(30, 40), wallMat);
+    ceil0.rotation.x = Math.PI/2;
+    ceil0.position.set(0, 12, 80);
+    scene.add(ceil0);
+
+    const wallBack = new THREE.Mesh(new THREE.BoxGeometry(30, 12, 2), wallMat);
+    wallBack.position.set(0, 6, 100);
+    wallBack.userData.isEnvironment = true;
+    scene.add(wallBack);
+
+    const wallL0 = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 40), wallMat);
+    wallL0.position.set(-15, 6, 80);
+    wallL0.userData.isEnvironment = true;
+    scene.add(wallL0);
+
+    const wallR0a = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 15), wallMat);
+    wallR0a.position.set(15, 6, 92.5); 
+    scene.add(wallR0a);
+    const wallR0b = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 15), wallMat);
+    wallR0b.position.set(15, 6, 67.5); 
+    scene.add(wallR0b);
+    const wallR0Top = new THREE.Mesh(new THREE.BoxGeometry(2, 4, 10), wallMat);
+    wallR0Top.position.set(15, 10, 80); 
+    scene.add(wallR0Top);
+
+    levelObjects.huggyDoor = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 10), new THREE.MeshStandardMaterial({color: 0x555555}));
+    levelObjects.huggyDoor.position.set(15, 4, 80);
+    scene.add(levelObjects.huggyDoor);
+
+    const wallF0L = new THREE.Mesh(new THREE.BoxGeometry(10, 12, 2), wallMat);
+    wallF0L.position.set(-10, 6, 60);
+    scene.add(wallF0L);
+    const wallF0R = new THREE.Mesh(new THREE.BoxGeometry(10, 12, 2), wallMat);
+    wallF0R.position.set(10, 6, 60);
+    scene.add(wallF0R);
+    const wallF0Top = new THREE.Mesh(new THREE.BoxGeometry(10, 4, 2), wallMat);
+    wallF0Top.position.set(0, 10, 60);
+    scene.add(wallF0Top);
+
+    levelObjects.escapeDoor = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 1), new THREE.MeshStandardMaterial({color: 0x333333}));
+    levelObjects.escapeDoor.position.set(0, 4, 60);
+    scene.add(levelObjects.escapeDoor);
+
+    levelObjects.puzzleSource = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 2), new THREE.MeshStandardMaterial({color:0x0000aa, emissive:0x000055}));
+    levelObjects.puzzleSource.position.set(-14, 5, 85);
+    scene.add(levelObjects.puzzleSource);
+    const srcHit = new THREE.Mesh(new THREE.BoxGeometry(3,3,3), new THREE.MeshBasicMaterial({visible:false}));
+    srcHit.position.copy(levelObjects.puzzleSource.position);
+    srcHit.name = "PUZZLE_SOURCE";
+    scene.add(srcHit);
+
+    levelObjects.puzzlePole = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 6), new THREE.MeshStandardMaterial({color:0x555555}));
+    levelObjects.puzzlePole.position.set(0, 3, 85);
+    scene.add(levelObjects.puzzlePole);
+
+    levelObjects.puzzleReceiver = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 2), new THREE.MeshStandardMaterial({color:0x550000, emissive:0x220000}));
+    levelObjects.puzzleReceiver.position.set(14, 5, 85); 
+    scene.add(levelObjects.puzzleReceiver);
+    const recHit = new THREE.Mesh(new THREE.BoxGeometry(3,3,3), new THREE.MeshBasicMaterial({visible:false}));
+    recHit.position.copy(levelObjects.puzzleReceiver.position);
+    recHit.name = "PUZZLE_RECEIVER";
+    scene.add(recHit);
+
+    const floor1 = new THREE.Mesh(new THREE.PlaneGeometry(20, 60), floorMat);
+    floor1.rotation.x = -Math.PI/2;
+    floor1.position.set(0, 0, 30);
+    floor1.userData.isEnvironment = true;
+    scene.add(floor1);
+
+    const wallL1 = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 80), wallMat);
+    wallL1.position.set(-11, 6, 40);
+    wallL1.userData.isEnvironment = true;
+    scene.add(wallL1);
+
+    const wallR1 = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 80), wallMat);
+    wallR1.position.set(11, 6, 40);
+    wallR1.userData.isEnvironment = true;
+    scene.add(wallR1);
+    
+    const ceil1 = new THREE.Mesh(new THREE.PlaneGeometry(20, 80), wallMat);
+    ceil1.rotation.x = Math.PI/2;
+    ceil1.position.set(0, 12, 40);
+    scene.add(ceil1);
+
+    const pit = new THREE.Mesh(new THREE.PlaneGeometry(20, 15), new THREE.MeshBasicMaterial({color:0x000000}));
+    pit.rotation.x = -Math.PI/2;
+    pit.position.set(0, 0.1, 12.5); 
+    scene.add(pit);
+
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 20), new THREE.MeshStandardMaterial({color:0x0044ff, emissive:0x001144}));
+    pipe.rotation.z = Math.PI/2;
+    pipe.position.set(0, 11, 12.5);
+    scene.add(pipe);
+
+    const grappleBox = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 8), new THREE.MeshBasicMaterial({visible:false}));
+    grappleBox.position.set(0, 10, 12.5);
+    grappleBox.name = "GRAPPLE_POINT";
+    grappleBox.userData = { landing: new THREE.Vector3(0, 1.7, 0) }; 
+    scene.add(grappleBox);
+
+    const floor2 = new THREE.Mesh(new THREE.PlaneGeometry(60, 20), floorMat);
+    floor2.rotation.x = -Math.PI/2;
+    floor2.position.set(20, 0, -5); 
+    floor2.userData.isEnvironment = true;
+    scene.add(floor2);
+
+    const deadEndWall = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 20), wallMat);
+    deadEndWall.position.set(-11, 6, -5);
+    deadEndWall.userData.isEnvironment = true;
+    scene.add(deadEndWall);
+
+    const hall2BackLeft = new THREE.Mesh(new THREE.BoxGeometry(40, 12, 2), wallMat);
+    hall2BackLeft.position.set(10, 6, -16); 
+    hall2BackLeft.userData.isEnvironment = true;
+    scene.add(hall2BackLeft);
+
+    const hall2BackRight = new THREE.Mesh(new THREE.BoxGeometry(20, 12, 2), wallMat);
+    hall2BackRight.position.set(60, 6, -16); 
+    hall2BackRight.userData.isEnvironment = true;
+    scene.add(hall2BackRight);
+    
+    const hall2Front = new THREE.Mesh(new THREE.BoxGeometry(60, 12, 2), wallMat);
+    hall2Front.position.set(40, 6, 6);
+    hall2Front.userData.isEnvironment = true;
+    scene.add(hall2Front);
+
+    const ceil2 = new THREE.Mesh(new THREE.PlaneGeometry(80, 22), wallMat);
+    ceil2.rotation.x = Math.PI/2;
+    ceil2.position.set(30, 12, -5);
+    scene.add(ceil2);
+
+    const hallLen = 100; 
+    const floor3 = new THREE.Mesh(new THREE.PlaneGeometry(20, hallLen), floorMat);
+    floor3.rotation.x = -Math.PI/2;
+    floor3.position.set(40, 0, -55);
+    floor3.userData.isEnvironment = true;
+    scene.add(floor3);
+
+    const convGeo = new THREE.PlaneGeometry(16, 50);
+    const convMat = new THREE.MeshStandardMaterial({color:0x333333, roughness:0.5});
+    const conveyor = new THREE.Mesh(convGeo, convMat);
+    conveyor.rotation.x = -Math.PI/2;
+    conveyor.position.set(40, 0.1, -55);
+    scene.add(conveyor);
+    
+    for(let i=0; i<10; i++) {
+        const strip = new THREE.Mesh(new THREE.PlaneGeometry(16, 1), new THREE.MeshBasicMaterial({color:0xffff00}));
+        strip.rotation.x = -Math.PI/2;
+        strip.position.set(40, 0.15, -30 - (i*5));
+        scene.add(strip);
+    }
+
+    const wallL3 = new THREE.Mesh(new THREE.BoxGeometry(2, 12, hallLen), wallMat);
+    wallL3.position.set(29, 6, -55);
+    wallL3.userData.isEnvironment = true;
+    scene.add(wallL3);
+    
+    const wallR3a = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 75), wallMat);
+    wallR3a.position.set(51, 6, -42.5); 
+    wallR3a.userData.isEnvironment = true;
+    scene.add(wallR3a);
+    
+    const ceil3 = new THREE.Mesh(new THREE.PlaneGeometry(20, hallLen), wallMat);
+    ceil3.rotation.x = Math.PI/2;
+    ceil3.position.set(40, 12, -55);
+    scene.add(ceil3);
+
+    const floor4 = new THREE.Mesh(new THREE.PlaneGeometry(60, 20), floorMat);
+    floor4.rotation.x = -Math.PI/2;
+    floor4.position.set(60, 0, -90); 
+    floor4.userData.isEnvironment = true;
+    scene.add(floor4);
+
+    const acid = new THREE.Mesh(new THREE.PlaneGeometry(25, 15), new THREE.MeshBasicMaterial({color:0x00ff00, emissive:0x00aa00}));
+    acid.rotation.x = -Math.PI/2;
+    acid.position.set(60, 0.2, -90); 
+    scene.add(acid);
+    
+    const acidLight = new THREE.PointLight(0x00ff00, 1, 30);
+    acidLight.position.set(60, 5, -90);
+    scene.add(acidLight);
+
+    const pipe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 20), new THREE.MeshStandardMaterial({color:0x0044ff, emissive:0x001144}));
+    pipe2.rotation.x = Math.PI/2; 
+    pipe2.position.set(60, 11, -90);
+    scene.add(pipe2);
+
+    const gBox2 = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 8), new THREE.MeshBasicMaterial({visible:false}));
+    gBox2.position.set(60, 10, -90);
+    gBox2.name = "GRAPPLE_POINT";
+    gBox2.userData = { landing: new THREE.Vector3(80, 1.7, -90) };
+    scene.add(gBox2);
+
+    const endWallConveyor = new THREE.Mesh(new THREE.BoxGeometry(22, 12, 2), wallMat);
+    endWallConveyor.position.set(40, 6, -100); 
+    endWallConveyor.userData.isEnvironment = true;
+    scene.add(endWallConveyor);
+
+    const wallBack4 = new THREE.Mesh(new THREE.BoxGeometry(40, 12, 2), wallMat);
+    wallBack4.position.set(70, 6, -80); 
+    wallBack4.userData.isEnvironment = true;
+    scene.add(wallBack4);
+
+    const wallFront4 = new THREE.Mesh(new THREE.BoxGeometry(28, 12, 2), wallMat);
+    wallFront4.position.set(54, 6, -100); 
+    wallFront4.userData.isEnvironment = true;
+    scene.add(wallFront4);
+
+    const finalLen = 80;
+    const floor5 = new THREE.Mesh(new THREE.PlaneGeometry(20, finalLen), floorMat);
+    floor5.rotation.x = -Math.PI/2;
+    floor5.position.set(80, 0, -120);
+    floor5.userData.isEnvironment = true;
+    scene.add(floor5);
+
+    const wallL5 = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 60), wallMat);
+    wallL5.position.set(69, 6, -130); 
+    wallL5.userData.isEnvironment = true;
+    scene.add(wallL5);
+
+    const wallR5 = new THREE.Mesh(new THREE.BoxGeometry(2, 12, finalLen), wallMat);
+    wallR5.position.set(91, 6, -120); 
+    wallR5.userData.isEnvironment = true;
+    scene.add(wallR5);
+
+    const crateGeo = new THREE.BoxGeometry(4, 4, 4);
+    const crateMat = new THREE.MeshStandardMaterial({color: 0x8B4513});
+    
+    const c1 = new THREE.Mesh(crateGeo, crateMat);
+    c1.position.set(40, 2, -10); 
+    c1.userData.isEnvironment = true;
+    scene.add(c1);
+
+    const c2 = new THREE.Mesh(crateGeo, crateMat);
+    c2.position.set(35, 2, -50); 
+    c2.userData.isEnvironment = true;
+    scene.add(c2);
+
+    const c3 = new THREE.Mesh(crateGeo, crateMat);
+    c3.position.set(45, 2, -65); 
+    c3.userData.isEnvironment = true;
+    scene.add(c3);
+
+    levelObjects.securityDoor = new THREE.Mesh(
+        new THREE.BoxGeometry(20, 12, 1),
+        new THREE.MeshStandardMaterial({color:0x333333, metalness:0.8})
+    );
+    levelObjects.securityDoor.position.set(40, 6, -25);
+    scene.add(levelObjects.securityDoor);
+
+    const powerNode2 = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 0.5),
+        new THREE.MeshStandardMaterial({color:0x0000ff, emissive:0x0000ff, emissiveIntensity: 2.0})
+    );
+    powerNode2.position.set(30.2, 4, -22); 
+    powerNode2.rotation.y = Math.PI/2;
+    levelObjects.powerNode = powerNode2;
+    scene.add(powerNode2);
+    
+    const blueLight = new THREE.PointLight(0x0000ff, 1, 10);
+    blueLight.position.set(32, 6, -22);
+    scene.add(blueLight);
+
+    const powerHit = new THREE.Mesh(new THREE.BoxGeometry(3,3,3), new THREE.MeshBasicMaterial({visible:false}));
+    powerHit.position.copy(powerNode2.position);
+    powerHit.name = "POWER_NODE";
+    scene.add(powerHit);
+
+    const gateZ = -150;
+    levelObjects.gate = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 12, 20),
+        new THREE.MeshStandardMaterial({ color: 0x444444, transparent:true, opacity:0.9 })
+    );
+    levelObjects.gate.scale.set(20, 1, 0.1); 
+    levelObjects.gate.position.set(80, 16, gateZ);
+    scene.add(levelObjects.gate);
+
+    const warn = new THREE.Mesh(new THREE.PlaneGeometry(20, 4), new THREE.MeshBasicMaterial({color:0xcccc00}));
+    warn.rotation.x = -Math.PI/2;
+    warn.position.set(80, 0.01, gateZ);
+    scene.add(warn);
+
+    levelObjects.leverPivot = new THREE.Group();
+    levelObjects.leverPivot.position.set(69.5, 3, -155); 
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.5), new THREE.MeshStandardMaterial({color:0xffff00, emissive:0xaa8800}));
+    handle.position.set(0.5, 0.5, 0);
+    handle.rotation.z = -Math.PI/4;
+    levelObjects.leverPivot.add(handle);
+    scene.add(levelObjects.leverPivot);
+
+    const lHit = new THREE.Mesh(new THREE.BoxGeometry(3,3,3), new THREE.MeshBasicMaterial({visible:false}));
+    lHit.position.set(69.5, 3, -155);
+    lHit.name = "LEVER_HITBOX";
+    scene.add(lHit);
+
+    levelObjects.strobe = new THREE.PointLight(0xff0000, 2, 30);
+    levelObjects.strobe.position.set(80, 10, gateZ);
+    scene.add(levelObjects.strobe);
+}
+
+// --- Logic ---
+
+function startGrapple(targetPos) {
+    if(state.isGrappling || !targetPos) return;
+    state.isGrappling = true;
+    state.grappleStart = camera.position.clone();
+    state.grappleTarget = targetPos.clone(); 
+    state.grappleProgress = 0;
+}
+
+function activatePower() {
+    if(state.securityDoorOpen) return;
+    
+    levelObjects.powerNode.material.color.setHex(0x00ff00);
+    levelObjects.powerNode.material.emissive.setHex(0x00ff00);
+
+    let y = 6;
+    const openInt = setInterval(() => {
+        y += 0.2;
+        levelObjects.securityDoor.position.y = y;
+        if(y >= 15) {
+            clearInterval(openInt);
+            state.securityDoorOpen = true;
+            setTimeout(() => {
+                const closeInt = setInterval(() => {
+                    if (state.isGameOver) { clearInterval(closeInt); return; }
+                    y -= 0.5; 
+                    levelObjects.securityDoor.position.y = y;
+                    if(y <= 6) {
+                        y=6;
+                        clearInterval(closeInt);
+                        state.securityDoorOpen = false;
+                        levelObjects.powerNode.material.color.setHex(0x0000ff);
+                        levelObjects.powerNode.material.emissive.setHex(0x0000ff);
+                    }
+                }, 16);
+            }, 4000);
+        }
+    }, 16);
+}
+
+function pullLever() {
+    if (state.leverPulled) return;
+    state.leverPulled = true;
+    levelObjects.strobe.color.setHex(0x00ff00);
+}
+
+function shakeCamera(intensity) {
+    let s = intensity;
+    const i = setInterval(()=>{
+        camera.position.y = (state.isCrouching ? 0.8 : 1.7) + (Math.random()-0.5)*s*0.1;
+        s--;
+        if(s<=0) clearInterval(i);
+    }, 30);
+}
+
+function endGame(win) {
+    if (state.isGameOver && win) return; 
+    
+    if (!win) {
+        return; 
+    }
+
+    state.isGameOver = true;
+    state.isPlaying = false;
+    controls.unlock();
+    
+    const msg = document.getElementById('status-msg');
+    const overlay = document.getElementById('overlay');
+    
+    msg.style.display = 'block';
+    msg.innerHTML = "ESCAPED!";
+    msg.style.color = "#00ff00";
+    
+    setTimeout(() => {
+        overlay.style.display = 'block';
+        msg.style.display = 'none';
+        overlay.onclick = () => location.reload();
+    }, 2000);
+}
+
+// --- Loop ---
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const time = performance.now();
+    const rawDelta = (time - state.lastTime) / 1000;
+    const delta = Math.min(rawDelta, 0.1); 
+    state.lastTime = time;
+    state.runTime += delta;
+
+    if(!state.doorClosed && !state.leverPulled) {
+        levelObjects.strobe.intensity = (Math.sin(time*0.01)+1)*2;
+    }
+    
+    if(particles) {
+        particles.rotation.y += delta * 0.1;
+    }
+    
+    if (grabPack) grabPack.updateLoop();
+
+    if (state.isPlaying && !state.isGameOver) {
+        
+        // Crouch Logic
+        const targetHeight = state.isCrouching ? 0.8 : 1.7;
+        camera.position.y += (targetHeight - camera.position.y) * 10 * delta;
+
+        if (state.leverPulled && !state.doorClosed) {
+            if (levelObjects.leverPivot.rotation.z < 0) {
+                levelObjects.leverPivot.rotation.z += 4 * delta; 
+            }
+
+            const gateSpeed = 12; 
+            const gateFloorY = 6; 
+            
+            if (levelObjects.gate.position.y > gateFloorY) {
+                levelObjects.gate.position.y -= gateSpeed * delta;
+                
+                const distToClose = levelObjects.gate.position.y - gateFloorY;
+                const timeToClose = distToClose / gateSpeed;
+                const huggyZ = huggyWuggy.mesh.position.z;
+                const distToGate = Math.abs(-150 - huggyZ);
+                
+                if (distToGate > 0 && distToGate < 40 && timeToClose > 0.05) {
+                    const requiredSpeed = distToGate / timeToClose;
+                    huggyWuggy.forceSpeed = requiredSpeed * 1.05; 
+                }
+
+                const gateBottom = levelObjects.gate.position.y - 6;
+                if (Math.abs(huggyZ - (-150)) < 1.5 && gateBottom < 6) {
+                    huggyWuggy.state = 'trapped';
+                    huggyWuggy.squashed = true;
+                    const scale = Math.max(0.05, gateBottom / 6.5);
+                    huggyWuggy.mesh.scale.y = scale;
+                }
+
+            } else {
+                levelObjects.gate.position.y = gateFloorY;
+                state.doorClosed = true;
+                shakeCamera(30);
+
+                if (huggyWuggy.squashed) {
+                     endGame(true);
+                } else if (huggyWuggy.mesh.position.z < -151) {
+                    huggyWuggy.state = 'chasing';
+                    huggyWuggy.forceSpeed = null;
+                } else {
+                    huggyWuggy.state = 'trapped';
+                    endGame(true);
+                }
+            }
+        }
+
+        if (state.isGrappling) {
+            state.grappleProgress += delta * 1.5;
+            
+            if (state.grappleProgress >= 1) {
+                state.grappleProgress = 1;
+                state.isGrappling = false;
+                grabPack.isShooting = false;
+                grabPack.blueHand.position.copy(grabPack.blueOrigin);
+                camera.position.copy(state.grappleTarget);
+                velocity.set(0,0,0);
+            } else {
+                camera.position.lerpVectors(state.grappleStart, state.grappleTarget, state.grappleProgress);
+                const height = Math.sin(state.grappleProgress * Math.PI) * 3;
+                camera.position.y = (state.isCrouching ? 0.8 : 1.7) + height;
+            }
+            
+        } else {
+            // MOVEMENT
+            velocity.x -= velocity.x * CONFIG.friction * delta;
+            velocity.z -= velocity.z * CONFIG.friction * delta;
+            velocity.y -= CONFIG.gravity * delta;
+
+            const fwdInput = (moveForward ? 1 : 0) - (moveBackward ? 1 : 0) + input.forward;
+            const rightInput = (moveRight ? 1 : 0) - (moveLeft ? 1 : 0) + input.right;
+
+            direction.z = Math.max(-1, Math.min(1, fwdInput));
+            direction.x = Math.max(-1, Math.min(1, rightInput));
+            
+            if (direction.length() > 1) direction.normalize();
+
+            // Handle Crouch / Keyboard Input Toggle
+            if (crouchInput || (keys['KeyC'] || keys['ControlLeft'])) {
+                state.isCrouching = true;
+            } else {
+                state.isCrouching = false;
+            }
+
+            const speed = state.isCrouching ? CONFIG.crouchSpeed : CONFIG.moveSpeed;
+
+            if (Math.abs(direction.z) > 0) velocity.z -= direction.z * speed * delta;
+            if (Math.abs(direction.x) > 0) velocity.x -= direction.x * speed * delta;
+
+            // Apply Velocity
+            controls.moveRight(-velocity.x * delta);
+            controls.moveForward(-velocity.z * delta);
+            
+            // Tilt camera when strafing
+            camera.rotation.z = velocity.x * 0.002;
+
+            camera.position.y += velocity.y * delta;
+
+            // Floor check relative to crouch height? 
+            // Simplified: Physics handles Y velocity, camera height handles view.
+            if (camera.position.y < (state.isCrouching ? 0.8 : 1.7)) {
+                velocity.y = 0;
+                camera.position.y = (state.isCrouching ? 0.8 : 1.7);
+                state.canJump = true;
+            } else {
+                state.canJump = false;
+            }
+
+            // Head Bob
+            if (velocity.lengthSq() > 1 && state.canJump) {
+                const bobSpeed = state.isCrouching ? 10 : 15;
+                const bobAmp = state.isCrouching ? 0.02 : 0.05;
+                camera.position.y += Math.sin(state.runTime * bobSpeed) * bobAmp;
+            }
+
+            const pos = camera.position;
+
+            // CONVEYOR LOGIC (Z: -30 to -80)
+            if (pos.x > 30 && pos.x < 50 && pos.z < -30 && pos.z > -80) {
+                pos.z += 7.5 * delta; 
+            }
+
+            // COLLISIONS
+            // Room 0 (Start): Z > 60
+            if (pos.z > 60) {
+                if (pos.x < -14) pos.x = -14;
+                if (pos.x > 14) pos.x = 14;
+                if (pos.z > 99) pos.z = 99;
+                
+                if (pos.distanceTo(levelObjects.puzzlePole.position) < 1.0) {
+                    const angle = Math.atan2(pos.z - 85, pos.x - 0);
+                    pos.x = 0 + Math.cos(angle) * 1.0;
+                    pos.z = 85 + Math.sin(angle) * 1.0;
+                }
+
+                if (levelObjects.escapeDoor.position.y < 8) { 
+                    if (pos.z < 61) pos.z = 61;
+                }
+            }
+            // Hall 1 (Start): X=[-10, 10], Z=[0, 60]
+            else if (pos.z > 0) {
+                 if (pos.x < -9) pos.x = -9;
+                 if (pos.x > 9) pos.x = 9;
+                 if (pos.z < 20 && pos.z > 5 && !state.isGrappling) {
+                    if (velocity.z < 0) { pos.z = 20; velocity.z = 0; }
+                 }
+            } 
+            // Mid Hall
+            else if (pos.z > -15) {
+                if (pos.z < -14) {
+                    if (pos.x <= 30) pos.z = -14;
+                }
+                if (pos.z > 4) pos.z = 4;
+                if (pos.x < -9) pos.x = -9;
+                if (pos.x > 49) pos.x = 49;
+            }
+            // Conveyor Hall (Z > -88) - Fixed check so we can enter turn
+            else if (pos.z > -88) {
+                if (pos.x < 31) pos.x = 31;
+                // Wall Right: Blocks X > 49 UNLESS Z < -80
+                if (pos.z > -80 && pos.x > 49) pos.x = 49;
+                
+                if (levelObjects.securityDoor.position.y < 10) {
+                    if (pos.z < -24 && pos.z > -26) {
+                        if (velocity.z < 0) pos.z = -24;
+                        else pos.z = -26;
+                    }
+                }
+                // Allow exit at Z=-90 if X > 49 (Turning Right)
+                // Block forward movement if not turning
+                if (pos.z < -88 && pos.x <= 49) pos.z = -88;
+            }
+            // Acid Hall (X: 40-80, Z: -90)
+            else if (pos.x < 78 && pos.z > -100) {
+               // Walls at Z=-80 and Z=-100
+               if (pos.z < -99) pos.z = -99; 
+               if (pos.z > -81) pos.z = -81; 
+               
+               if (pos.x < 40) pos.x = 40;
+               // Acid Pit X: 47.5 to 72.5
+               if (pos.x > 47.5 && pos.x < 72.5 && !state.isGrappling) {
+                   if (velocity.x > 0) pos.x = 47.5;
+                   if (velocity.x < 0) pos.x = 72.5;
+               }
+            }
+            // Vents & Storage (X > 60, Z < -100)
+            else if (pos.z > -170) {
+                // Vent Entrance Wall (Z=-100)
+                if (pos.z > -105 && pos.z < -99) {
+                    // Vent Opening is X 65-75, Y < 3
+                    if (pos.x > 65 && pos.x < 75 && pos.y < 2.5) {
+                        // Allow enter
+                    } else {
+                        if(pos.z > -100) pos.z = -100;
+                        else pos.z = -105;
+                    }
+                }
+                
+                // Inside Vent Tunnel (X 65-75, Z -100 to -130)
+                if (pos.z < -100 && pos.z > -130) {
+                    if (pos.x < 66) pos.x = 66;
+                    if (pos.x > 74) pos.x = 74;
+                    // Force Crouch
+                    if (pos.y > 2.8) {
+                        // Head hit ceiling?
+                    }
+                }
+                
+                // Storage Room (X 50-90)
+                if (pos.z < -130) {
+                    if (pos.x < 51) pos.x = 51;
+                    if (pos.x > 89) pos.x = 89;
+                    
+                    // Simple Box Collision (Center box)
+                    // X 66-74, Z -141 to -149
+                    if (pos.x > 66 && pos.x < 74 && pos.z < -141 && pos.z > -149) {
+                        // Push out
+                        if(Math.abs(pos.x - 70) > Math.abs(pos.z - (-145))) {
+                            if(pos.x > 70) pos.x = 74; else pos.x = 66;
+                        } else {
+                            if(pos.z > -145) pos.z = -141; else pos.z = -149;
+                        }
+                    }
+                }
+            }
+            // Final Hall
+            else {
+                if (pos.x > 89) pos.x = 89;
+                if (pos.x < 71) pos.x = 71;
+                if (pos.z > -242) pos.z = -242; // End Gate
+                
+                if (state.doorClosed) {
+                    if (pos.z > -242) pos.z = -242;
+                }
+            }
+        }
+
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+        const crosshair = document.getElementById('crosshair');
+        const text = document.getElementById('interaction-text');
+        crosshair.className = '';
+        text.style.opacity = 0;
+        
+        for(let hit of intersects) {
+            if(hit.object.name === "GRAPPLE_POINT") {
+                crosshair.classList.add('grapple'); 
+                text.style.opacity = 1;
+                text.innerText = "GRAPPLE";
+                break;
+            }
+            if(hit.object.name === "LEVER_HITBOX") {
+                crosshair.classList.add('lever'); 
+                text.style.opacity = 1;
+                text.innerText = "PULL LEVER";
+                break;
+            }
+            if(hit.object.name === "POWER_NODE") {
+                crosshair.classList.add('power'); 
+                text.style.opacity = 1;
+                text.innerText = "CHARGE";
+                break;
+            }
+            if(hit.object.name === "PUZZLE_SOURCE" && !grabPack.latched) {
+                crosshair.classList.add('power');
+                text.style.opacity = 1;
+                text.innerText = "HOLD L-CLICK";
+                break;
+            }
+            if(hit.object.name === "PUZZLE_RECEIVER" && state.puzzleWrapped) {
+                crosshair.classList.add('power');
+                text.style.opacity = 1;
+                text.innerText = "CONNECT R-CLICK";
+                break;
+            }
+        }
+
+        huggyWuggy.update(delta, camera.position);
+    }
+    
+    if (state.isGameOver && huggyWuggy.state === 'jumpscare') {
+        huggyWuggy.animateJumpscare(delta);
+    }
+
+    renderer.render(scene, camera);
+}
+
+// --- Inputs ---
+let keys = {};
+function onKeyDown(e) {
+    keys[e.code] = true;
+    switch (e.code) {
+        case 'KeyW': moveForward = true; break;
+        case 'KeyA': moveLeft = true; break;
+        case 'KeyS': moveBackward = true; break;
+        case 'KeyD': moveRight = true; break;
+        case 'Space': 
+            if(state.canJump) {
+                velocity.y = CONFIG.jumpForce;
+                state.canJump = false;
+            }
+            break;
+    }
+}
+function onKeyUp(e) {
+    keys[e.code] = false;
+    switch (e.code) {
+        case 'KeyW': moveForward = false; break;
+        case 'KeyA': moveLeft = false; break;
+        case 'KeyS': moveBackward = false; break;
+        case 'KeyD': moveRight = false; break;
+    }
+}
+function onMouseDown(e) {
+    if (state.isPlaying) {
+        if (e.button === 0) grabPack.shoot('blue');
+        if (e.button === 2) grabPack.shoot('red');
+    }
+}
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+init();
+animate();
+
+</script>
+</body>
+</html>
